@@ -1,71 +1,84 @@
 # sql-migration-tools
 
-Shared Python tooling for **migration-driven SQL Server database projects** (Databasecode-style).
+Shared Python CLI (`sql-mig`) for **migration-driven SQL Server database projects**.
 
-Install once, use from every database repo:
+This repo is tooling only. Schema SQL lives in each database project (`Deployments/`, `SchemaModel/`, `*.sqlproj`).
+
+- **How to use:** [docs/HOWTO.md](docs/HOWTO.md)
+- **Use from other database repos:** [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md)
+- **Sample database project:** [nakkavamsi/Databasecode](https://github.com/nakkavamsi/Databasecode)
+- **Architecture and command internals:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)
+
+## Install
 
 ```bash
 pip install -e /path/to/sql-migration-tools
-# or after publishing to GitHub:
-pip install "sql-migration-tools @ git+https://github.com/<org>/sql-migration-tools.git"
 ```
+
+From GitHub:
+
+```bash
+pip install "sql-migration-tools @ git+https://github.com/nakkavamsi/DBDeploymentTool.git"
+```
+
+Requires Python 3.10+. `sql-mig run` also needs `sqlcmd` on `PATH`.
 
 ## Commands
 
+Run these from the **database project** directory (not this tools repo). `--project-root` defaults to the current working directory.
+
 | Command | Purpose |
 |---------|---------|
-| `sql-mig sync` | Sync `SchemaModel/` from `Deployments/Migrations/` |
-| `sql-mig run` | Apply pending migrations via sqlcmd + history tables |
 | `sql-mig new` | Scaffold a new migration with `Migration-Id` |
 | `sql-mig stamp` | Stamp missing `Migration-Id` headers |
+| `sql-mig sync` | Rebuild `SchemaModel/` from `Deployments/Migrations/` |
+| `sql-mig run` | Apply pending migrations via sqlcmd + history tables |
 | `sql-mig bootstrap` | Split a baseline SQL export into migration files |
-
-All commands default `--project-root` to the **current working directory** (your database project).
-
-## Examples
 
 ```bash
 cd MyDatabaseProject
 
-sql-mig sync
 sql-mig new --version 2.3.0 --name dbo.person.add_status
+sql-mig sync
 sql-mig run -S localhost -d MyDb -U sa -C --status
+sql-mig run -S localhost -d MyDb -U sa -C
 sql-mig stamp --all
 sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync
 ```
 
-## Using from a database project
+```bash
+sql-mig --help
+sql-mig run --help
+```
 
-1. Add a dependency (local path while developing):
+## Typical loop
+
+1. `sql-mig new --version X.Y.Z --name some.change`
+2. Edit the generated SQL (keep the `-- Migration-Id` header).
+3. `sql-mig sync` so `SchemaModel/` matches migrations.
+4. `sql-mig run -S ... -d ...` to apply pending scripts.
+
+Migrations are the source of truth. Do not edit `SchemaModel/` by hand.
+
+## Using from another database project
+
+This repo is the CLI. Each database is a **separate** repo that installs the package and keeps its own SQL.
+
+The sample consumer is **[Databasecode](https://github.com/nakkavamsi/Databasecode)** (migrations, `.sqlproj` sync target, CI).
+
+Full wiring (requirements.txt, MSBuild, CI, `dotnet new` template, from-scratch checklist): [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md).
 
 ```text
-# requirements.txt
-sql-migration-tools @ file:///Users/you/sql-migration-tools
+# in the database repo's requirements.txt
+sql-migration-tools @ git+https://github.com/nakkavamsi/DBDeploymentTool.git
 ```
 
-2. Or install from Git once the tools repo is published.
-
-3. Call from MSBuild / CI:
-
-```xml
-<Exec Command="sql-mig sync" WorkingDirectory="$(MSBuildProjectDirectory)" />
+```bash
+cd MyDatabaseProject
+pip install -r requirements.txt
+sql-mig sync
+sql-mig run -S localhost -d MyDb -U sa -C
 ```
-
-```yaml
-- run: pip install "sql-migration-tools @ git+https://github.com/<org>/sql-migration-tools.git"
-- run: sql-mig sync
-- run: sql-mig run -S localhost -d MyDb -U sa -C
-```
-
-## What stays in each database project
-
-- `Deployments/Migrations/`
-- `Deployments/Rollback/`
-- `Deployments/pre-deployments/`
-- `SchemaModel/`
-- `*.sqlproj`
-
-This package does **not** contain schema SQL — only the tooling.
 
 ## Development
 

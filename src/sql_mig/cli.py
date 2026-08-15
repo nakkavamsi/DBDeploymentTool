@@ -39,7 +39,7 @@ Examples:
 Install into a database project:
   pip install -e /path/to/sql-migration-tools
   # or from GitHub:
-  pip install "sql-migration-tools @ git+https://github.com/<org>/sql-migration-tools.git"
+  pip install "sql-migration-tools @ git+https://github.com/nakkavamsi/DBDeploymentTool.git"
 """
     )
 
