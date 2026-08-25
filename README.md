@@ -60,6 +60,12 @@ sql-mig run --help
 
 Migrations are the source of truth. Do not edit `SchemaModel/` by hand.
 
+## Optional wrappers and Cursor hook
+
+`scripts/` contains thin Python wrappers (`new-migration.py`, `stamp-migration-id.py`, `sync-schema-from-migrations.py`, `run-migrations.py`, `bootstrap-from-baseline.py`). Prefer `sql-mig`. Copy `scripts/` into a database project only if you want the old `python3 scripts/…` commands.
+
+`.cursor/` stamps `-- Migration-Id` after **Agent** edits under `Deployments/Migrations/`. Copy that folder into each database project workspace if you want the same behavior. Details: [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md#optional-cursor-hook).
+
 ## Using from another database project
 
 This repo is the CLI. Each database is a **separate** repo that installs the package and keeps its own SQL.

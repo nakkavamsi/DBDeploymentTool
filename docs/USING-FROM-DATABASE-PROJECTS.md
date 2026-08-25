@@ -50,7 +50,6 @@ What Databasecode demonstrates:
 | `SchemaModel/` | Generated SSDT model (do not edit) |
 | `Databasecode.sqlproj` | `Microsoft.Build.Sql` project; runs `sql-mig sync` before build |
 | `requirements.txt` | Installs `sql-migration-tools` |
-| `scripts/*.py` | Optional thin wrappers (`python3 scripts/sync-schema-from-migrations.py` → `sql-mig sync`) |
 | `.github/workflows/` | CI: install tools, `sql-mig sync`, dacpac build, `sql-mig run` against SQL Server 2022 |
 | `templates/SqlMigrationDatabase` | `dotnet new` template to spawn more database repos |
 
@@ -246,17 +245,7 @@ sql-mig run -S localhost -d MyDb -U sa -C --status
 sql-mig run -S localhost -d MyDb -U sa -C
 ```
 
-Equivalent wrappers in Databasecode (optional):
-
-| Wrapper | Same as |
-|---------|---------|
-| `python3 scripts/new-migration.py` | `sql-mig new` |
-| `python3 scripts/stamp-migration-id.py` | `sql-mig stamp` |
-| `python3 scripts/sync-schema-from-migrations.py` | `sql-mig sync` |
-| `python3 scripts/run-migrations.py` | `sql-mig run` |
-| `python3 scripts/bootstrap-from-baseline.py` | `sql-mig bootstrap` |
-
-New database repos do not need those wrappers. Call `sql-mig` directly.
+Optional `python3 scripts/…` wrappers live in **this** repo (`scripts/`). Copy them into a database project only if you still want those command names. New database repos should call `sql-mig` directly.
 
 ---
 
@@ -301,9 +290,16 @@ Working examples:
 
 ## Optional Cursor hook
 
-Databasecode stamps `-- Migration-Id` after Agent edits under `Deployments/Migrations/`. Copy `.cursor/hooks.json` and `.cursor/hooks/stamp-migration-id.sh` from that repo if you want the same behavior. The hook calls `python3 -m sql_mig stamp`, so the package must be installed.
+This repo ships `.cursor/hooks.json` and `.cursor/hooks/stamp-migration-id.sh`. Cursor project hooks only run in the **database** workspace, so copy them into each database project if you want Agent writes under `Deployments/Migrations/` stamped automatically:
 
-`sql-mig sync` also stamps missing IDs, so the hook is optional.
+```bash
+cp -R .cursor /path/to/MyDatabaseProject/
+chmod +x /path/to/MyDatabaseProject/.cursor/hooks/stamp-migration-id.sh
+```
+
+The hook calls `python3 -m sql_mig stamp`, so the package must be installed in that environment. It does **not** run when you type and save a file yourself.
+
+`sql-mig new` and `sql-mig sync` also stamp missing IDs, so the hook is optional.
 
 ---
 
