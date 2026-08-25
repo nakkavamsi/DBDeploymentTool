@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/template",
+  "author": "Databasecode",
+  "classifications": ["SQL", "Database", "SSDT", "DACPAC"],
+  "identity": "Databasecode.SqlMigrationDatabase",
+  "name": "SQL Server Database (Migration-Driven)",
+  "shortName": "sql-migration-db",
+  "description": "SQL Server dacpac project with semver migrations, auto SchemaModel sync, baseline bootstrap, Migration-Id headers, rollback folders, and GitHub Actions CI.",
+  "tags": {
+    "language": "SQL",
+    "type": "project"
+  },
+  "sourceName": "Databasecode",
+  "preferNameDirectory": true,
+  "symbols": {
+    "ProjectGuid": {
+      "type": "generated",
+      "generator": "guid",
+      "format": "D",
+      "replaces": "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+    }
+  }
+}

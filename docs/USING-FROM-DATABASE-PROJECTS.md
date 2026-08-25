@@ -51,7 +51,7 @@ What Databasecode demonstrates:
 | `Databasecode.sqlproj` | `Microsoft.Build.Sql` project; runs `sql-mig sync` before build |
 | `requirements.txt` | Installs `sql-migration-tools` |
 | `.github/workflows/` | CI: install tools, `sql-mig sync`, dacpac build, `sql-mig run` against SQL Server 2022 |
-| `templates/SqlMigrationDatabase` | `dotnet new` template to spawn more database repos |
+| `templates/SqlMigrationDatabase` | `dotnet new` / VSIX starter for new database repos (lives in this tooling repo) |
 
 Treat Databasecode as the **consumer**. Treat this repo as the **tool**.
 
@@ -201,13 +201,13 @@ pip install -r requirements.txt
 
 Use this to study migrations and CI. Strip sample `dbo` / `svc` / `play` objects before using it as a real database.
 
-### B. `dotnet new` template from Databasecode
+### B. `dotnet new` template from this repo
 
-Databasecode ships a project template:
+This tooling repo ships the project template:
 
 ```bash
-git clone https://github.com/nakkavamsi/Databasecode.git
-cd Databasecode
+git clone https://github.com/nakkavamsi/DBDeploymentTool.git
+cd DBDeploymentTool
 dotnet new install ./templates/SqlMigrationDatabase
 
 dotnet new sql-migration-db -n MyCustomerDb -o ../MyCustomerDb
@@ -216,7 +216,7 @@ pip install -r requirements.txt
 dotnet build MyCustomerDb.sqlproj --configuration Release /p:NetCoreBuild=true
 ```
 
-Details: [Databasecode templates/README.md](https://github.com/nakkavamsi/Databasecode/blob/main/templates/README.md).
+Details: [templates/README.md](../templates/README.md). Visual Studio VSIX: [extensions/README.md](../extensions/README.md).
 
 ### C. Empty repo + this CLI (from scratch)
 

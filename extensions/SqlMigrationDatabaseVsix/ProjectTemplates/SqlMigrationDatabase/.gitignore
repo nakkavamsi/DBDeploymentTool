@@ -1,0 +1,8 @@
+bin/
+obj/
+*.user
+*.jfm
+*.dbmdl
+*.dacpac
+*.publish.xml
+.vs/

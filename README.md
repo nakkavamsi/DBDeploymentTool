@@ -66,6 +66,22 @@ Migrations are the source of truth. Do not edit `SchemaModel/` by hand.
 
 `.cursor/` stamps `-- Migration-Id` after **Agent** edits under `Deployments/Migrations/`. Copy that folder into each database project workspace if you want the same behavior. Details: [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md#optional-cursor-hook).
 
+## Project templates (dotnet / Visual Studio)
+
+This repo ships scaffolding for new database projects:
+
+- `templates/SqlMigrationDatabase` — `dotnet new sql-migration-db`
+- `extensions/` — Visual Studio VSIX packaging of that template
+
+```bash
+git clone https://github.com/nakkavamsi/DBDeploymentTool.git
+cd DBDeploymentTool
+dotnet new install ./templates/SqlMigrationDatabase
+dotnet new sql-migration-db -n MyDb -o ../MyDb
+```
+
+Details: [templates/README.md](templates/README.md), [extensions/README.md](extensions/README.md).
+
 ## Using from another database project
 
 This repo is the CLI. Each database is a **separate** repo that installs the package and keeps its own SQL.

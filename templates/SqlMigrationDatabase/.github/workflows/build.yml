@@ -1,0 +1,48 @@
+name: Build Database Project
+
+on:
+  push:
+    branches:
+      - main
+      - nvkdbchanges
+  pull_request:
+    branches:
+      - main
+      - nvkdbchanges
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.406"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install sql-migration-tools
+        run: pip install -r requirements.txt
+
+      - name: Validate deployment manifests
+        run: sql-mig run --list-files
+
+      - name: Sync schema from migrations
+        run: sql-mig sync
+
+      - name: Build SQL project
+        run: dotnet build Databasecode.sqlproj --configuration Release /p:NetCoreBuild=true
+
+      - name: Upload dacpac artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Databasecode-dacpac
+          path: bin/Release/*.dacpac
+          if-no-files-found: error
