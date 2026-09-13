@@ -1,0 +1,8 @@
+# Shared migration tooling (sync, run, new, stamp, bootstrap).
+# Prefer GitHub once published; fall back to a sibling local checkout.
+
+# GitHub (recommended for CI / teammates):
+sql-migration-tools @ git+https://github.com/nakkavamsi/sql-migration-tools.git
+
+# Local sibling checkout (uncomment if the GitHub repo is not available yet):
+# sql-migration-tools @ file:///Users/vamsinakka/sql-migration-tools

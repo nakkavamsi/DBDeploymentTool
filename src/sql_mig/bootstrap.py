@@ -742,7 +742,7 @@ def parse_args() -> argparse.Namespace:
         "--project-root",
         type=Path,
         default=Path.cwd(),
-        help="Repository root (defaults to parent of scripts/)",
+        help="Repository root (defaults to the current directory)",
     )
     parser.add_argument(
         "--force",

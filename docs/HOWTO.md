@@ -227,6 +227,8 @@ sql-mig stamp --all
 sql-mig stamp --all --refresh   # keep IDs, drop legacy header lines
 ```
 
+Optional: copy this repo’s `.cursor/` folder into a database project so Cursor **Agent** writes are stamped automatically. See [USING-FROM-DATABASE-PROJECTS.md](USING-FROM-DATABASE-PROJECTS.md#optional-cursor-hook).
+
 ---
 
 ## Version folders

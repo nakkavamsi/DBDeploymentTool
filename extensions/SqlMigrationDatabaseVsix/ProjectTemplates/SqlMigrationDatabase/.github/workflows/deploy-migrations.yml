@@ -1,0 +1,177 @@
+name: Deploy Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      exclude_test_versions:
+        description: Exclude 9.9.9 test migration folder
+        type: boolean
+        default: true
+  push:
+    branches:
+      - main
+      - nvkdbchanges
+  pull_request:
+    branches:
+      - main
+      - nvkdbchanges
+
+env:
+  INTEGRATION_SA_PASSWORD: "YourStrong!Passw0rd"
+  INTEGRATION_DATABASE: $safeprojectname$
+
+jobs:
+  validate-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install sql-migration-tools
+        run: pip install -r requirements.txt
+
+      - name: Validate migration manifest
+        run: sql-mig run --list-files
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: validate-manifest
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: ${{ env.INTEGRATION_SA_PASSWORD }}
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P YourStrong!Passw0rd -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+          --health-start-period 30s
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install sql-migration-tools
+        run: pip install -r requirements.txt
+
+      - name: Install sqlcmd
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18
+          echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
+
+      - name: Create integration database
+        env:
+          SQLCMDPASSWORD: ${{ env.INTEGRATION_SA_PASSWORD }}
+        run: |
+          /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -d master -Q \
+            "IF DB_ID(N'${{ env.INTEGRATION_DATABASE }}') IS NULL CREATE DATABASE [${{ env.INTEGRATION_DATABASE }}];"
+
+      - name: Apply migrations
+        env:
+          SQLCMDPASSWORD: ${{ env.INTEGRATION_SA_PASSWORD }}
+        run: |
+          EXCLUDE_ARGS=""
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ inputs.exclude_test_versions }}" != "false" ]; then
+            EXCLUDE_ARGS="--exclude-version 9.9.9"
+          fi
+
+          sql-mig run \
+            -S localhost \
+            -d "${{ env.INTEGRATION_DATABASE }}" \
+            -U sa \
+            -C \
+            $EXCLUDE_ARGS
+
+      - name: Verify deployment status
+        env:
+          SQLCMDPASSWORD: ${{ env.INTEGRATION_SA_PASSWORD }}
+        run: |
+          EXCLUDE_ARGS=""
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ inputs.exclude_test_versions }}" != "false" ]; then
+            EXCLUDE_ARGS="--exclude-version 9.9.9"
+          fi
+
+          sql-mig run \
+            -S localhost \
+            -d "${{ env.INTEGRATION_DATABASE }}" \
+            -U sa \
+            -C \
+            --status \
+            $EXCLUDE_ARGS
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    needs: validate-manifest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install sql-migration-tools
+        run: pip install -r requirements.txt
+
+      - name: Install sqlcmd
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /usr/share/keyrings/microsoft-prod.gpg > /dev/null
+          curl -fsSL https://packages.microsoft.com/config/ubuntu/22.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18
+          echo "/opt/mssql-tools18/bin" >> "$GITHUB_PATH"
+
+      - name: Apply migrations
+        env:
+          SQLCMDPASSWORD: ${{ secrets.DEPLOY_SQL_PASSWORD }}
+        run: |
+          EXCLUDE_ARGS=""
+          if [ "${{ inputs.exclude_test_versions }}" != "false" ]; then
+            EXCLUDE_ARGS="--exclude-version 9.9.9"
+          fi
+
+          sql-mig run \
+            -S "${{ secrets.DEPLOY_SQL_SERVER }}" \
+            -d "${{ secrets.DEPLOY_SQL_DATABASE }}" \
+            -U "${{ secrets.DEPLOY_SQL_USER }}" \
+            -C \
+            $EXCLUDE_ARGS
+
+      - name: Show deployment status
+        env:
+          SQLCMDPASSWORD: ${{ secrets.DEPLOY_SQL_PASSWORD }}
+        run: |
+          EXCLUDE_ARGS=""
+          if [ "${{ inputs.exclude_test_versions }}" != "false" ]; then
+            EXCLUDE_ARGS="--exclude-version 9.9.9"
+          fi
+
+          sql-mig run \
+            -S "${{ secrets.DEPLOY_SQL_SERVER }}" \
+            -d "${{ secrets.DEPLOY_SQL_DATABASE }}" \
+            -U "${{ secrets.DEPLOY_SQL_USER }}" \
+            -C \
+            --status \
+            $EXCLUDE_ARGS

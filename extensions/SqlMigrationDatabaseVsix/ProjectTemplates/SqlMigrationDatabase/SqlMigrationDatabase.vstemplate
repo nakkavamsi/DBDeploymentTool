@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VSTemplate Version="3.0.0" Type="Project"
+  xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>SQL Server Database (Migration-Driven)</Name>
+    <Description>SQL Server dacpac project with semver migrations, SchemaModel sync, baseline bootstrap, Migration-Id tooling, and CI.</Description>
+    <ProjectType>Database</ProjectType>
+    <ProjectSubType>SQL</ProjectSubType>
+    <SortOrder>1000</SortOrder>
+    <CreateNewFolder>true</CreateNewFolder>
+    <DefaultName>Database</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+    <LocationField>Enabled</LocationField>
+    <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+    <LanguageTag>SQL</LanguageTag>
+    <PlatformTag>Windows</PlatformTag>
+  </TemplateData>
+  <TemplateContent>
+    <Project TargetFileName="$safeprojectname$.sqlproj"
+             File="$safeprojectname$.sqlproj"
+             ReplaceParameters="true">
+      <Folder Name="Deployments" TargetFolderName="Deployments">
+        <Folder Name="Migrations" TargetFolderName="Migrations">
+          <Folder Name="1.0.0" TargetFolderName="1.0.0">
+            <ProjectItem ReplaceParameters="true" TargetFileName="01_dbo.Sample.sql">Deployments\Migrations\1.0.0\01_dbo.Sample.sql</ProjectItem>
+          </Folder>
+        </Folder>
+        <Folder Name="Rollback" TargetFolderName="Rollback">
+          <Folder Name="FULL" TargetFolderName="FULL" />
+          <Folder Name="SOFT" TargetFolderName="SOFT" />
+        </Folder>
+        <Folder Name="pre-deployments" TargetFolderName="pre-deployments">
+          <ProjectItem ReplaceParameters="false">Deployments\pre-deployments\readme.txt</ProjectItem>
+        </Folder>
+      </Folder>
+      <Folder Name="SchemaModel" TargetFolderName="SchemaModel">
+        <ProjectItem ReplaceParameters="false">SchemaModel\.gitkeep</ProjectItem>
+      </Folder>
+      <Folder Name=".github" TargetFolderName=".github">
+        <Folder Name="workflows" TargetFolderName="workflows">
+          <ProjectItem ReplaceParameters="true">.github\workflows\build.yml</ProjectItem>
+        </Folder>
+      </Folder>
+      <ProjectItem ReplaceParameters="true">global.json</ProjectItem>
+      <ProjectItem ReplaceParameters="true">README.md</ProjectItem>
+      <ProjectItem ReplaceParameters="false">.gitignore</ProjectItem>
+    </Project>
+  </TemplateContent>
+</VSTemplate>

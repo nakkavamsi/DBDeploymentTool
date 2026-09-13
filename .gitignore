@@ -6,6 +6,5 @@ dist/
 build/
 .venv/
 venv/
-.DS_Store
-.pytest_cache/
-.mypy_cache/
+extensions/**/bin/
+extensions/**/obj/

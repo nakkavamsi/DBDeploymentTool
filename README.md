@@ -8,6 +8,7 @@ This repo is tooling only. Schema SQL lives in each database project (`Deploymen
 - **Use from other database repos:** [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md)
 - **Sample database project:** [nakkavamsi/Databasecode](https://github.com/nakkavamsi/Databasecode)
 - **Architecture and command internals:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)
+- **Test cases and scenarios:** [docs/Databasecode-Test-Cases-and-Scenarios.docx](docs/Databasecode-Test-Cases-and-Scenarios.docx)
 
 ## Install
 
@@ -59,6 +60,28 @@ sql-mig run --help
 4. `sql-mig run -S ... -d ...` to apply pending scripts.
 
 Migrations are the source of truth. Do not edit `SchemaModel/` by hand.
+
+## Optional wrappers and Cursor hook
+
+`scripts/` contains thin Python wrappers (`new-migration.py`, `stamp-migration-id.py`, `sync-schema-from-migrations.py`, `run-migrations.py`, `bootstrap-from-baseline.py`). Prefer `sql-mig`. Copy `scripts/` into a database project only if you want the old `python3 scripts/…` commands.
+
+`.cursor/` stamps `-- Migration-Id` after **Agent** edits under `Deployments/Migrations/`. Copy that folder into each database project workspace if you want the same behavior. Details: [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md#optional-cursor-hook).
+
+## Project templates (dotnet / Visual Studio)
+
+This repo ships scaffolding for new database projects:
+
+- `templates/SqlMigrationDatabase` — `dotnet new sql-migration-db`
+- `extensions/` — Visual Studio VSIX packaging of that template
+
+```bash
+git clone https://github.com/nakkavamsi/DBDeploymentTool.git
+cd DBDeploymentTool
+dotnet new install ./templates/SqlMigrationDatabase
+dotnet new sql-migration-db -n MyDb -o ../MyDb
+```
+
+Details: [templates/README.md](templates/README.md), [extensions/README.md](extensions/README.md).
 
 ## Using from another database project
 
