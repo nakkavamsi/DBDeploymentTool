@@ -8,6 +8,7 @@ This repo is tooling only. Schema SQL lives in each database project (`Deploymen
 - **Use from other database repos:** [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md)
 - **Sample database project:** [nakkavamsi/Databasecode](https://github.com/nakkavamsi/Databasecode)
 - **Architecture and command internals:** [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)
+- **Test cases and scenarios:** [docs/Databasecode-Test-Cases-and-Scenarios.docx](docs/Databasecode-Test-Cases-and-Scenarios.docx)
 
 ## Install
 

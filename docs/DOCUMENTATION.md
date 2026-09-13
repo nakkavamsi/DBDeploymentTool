@@ -43,7 +43,8 @@ sql-migration-tools/
 ├── docs/
 │   ├── HOWTO.md                           # practical usage guide
 │   ├── USING-FROM-DATABASE-PROJECTS.md    # consume this CLI from other DB repos
-│   └── DOCUMENTATION.md                   # this file
+│   ├── DOCUMENTATION.md                   # this file
+│   └── Databasecode-Test-Cases-and-Scenarios.docx  # test cases / scenarios
 └── src/sql_mig/
     ├── __init__.py             # __version__ = "1.0.0"
     ├── __main__.py             # python -m sql_mig
