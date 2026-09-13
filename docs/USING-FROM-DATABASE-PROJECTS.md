@@ -131,6 +131,8 @@ Export schema-only SQL (SSMS Generate Scripts, SqlPackage, mssql-scripter), then
 
 ```bash
 sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync
+# optional: skip CDC / other objects
+# sql-mig bootstrap --input baseline.sql --version 1.0.0 --skip-cdc --sync
 ```
 
 If the target database **already matches** that baseline, skip applying `1.0.0`:
