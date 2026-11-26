@@ -1,13 +1,17 @@
 # SQL Server Migration Database — Visual Studio Extension (VSIX)
 
-Packages the **SQL Server Database (Migration-Driven)** project template for Visual Studio 2022.
+Packages the **SQL Server Database (Migration-Driven)** project template for **Visual Studio 2022** and **Visual Studio 2026**.
+
+One VSIX installs on both. `source.extension.vsixmanifest` uses installation target `Version="[17.0,)"` (Community, Professional, and Enterprise; amd64 and arm64). Visual Studio 2022 matches the 17.x range. Visual Studio 2026 reads only that lower bound, so the same package loads there too. The SQL Server Data Tools prerequisite stays `Microsoft.VisualStudio.Component.SQL.SSDT` at `[17.0,)`, which is the component id in both products.
 
 ## Prerequisites (Windows)
 
-- Visual Studio 2022 (17.x)
+- Visual Studio 2022 (17.x) or Visual Studio 2026 (18.x), amd64 or arm64
 - Workload: **Data storage and processing** → SQL Server Data Tools
 - Python 3.x (for pre-build template pack)
 - .NET Framework 4.7.2 targeting pack (installed with VS)
+
+The VSIX is still built with `Microsoft.VSSDK.BuildTools` 17.x. That SDK packages a Visual Studio 2022-compatible VSIX; the open install range is what makes it valid on Visual Studio 2026. No Visual Studio 2026-only APIs are referenced.
 
 ## Build the VSIX locally
 

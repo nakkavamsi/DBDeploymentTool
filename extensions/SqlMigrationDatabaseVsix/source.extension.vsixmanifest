@@ -3,22 +3,37 @@
                  xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
     <Identity Id="Databasecode.SqlMigrationDatabase.0dbb6061"
-              Version="1.1.0"
+              Version="1.2.0"
               Language="en-US"
               Publisher="Databasecode" />
     <DisplayName>SQL Server Migration Database Project</DisplayName>
-    <Description xml:space="preserve">Project template for migration-driven SQL Server database repositories with SchemaModel sync, baseline bootstrap, sequences, merged role memberships, Migration-Id tooling, rollback folders, and GitHub Actions CI.</Description>
+    <Description xml:space="preserve">Project template for migration-driven SQL Server database repositories. Compatible with Visual Studio 2022 and Visual Studio 2026. Includes SchemaModel sync, baseline bootstrap, sequences, merged role memberships, Migration-Id tooling, rollback folders, and GitHub Actions CI.</Description>
     <Tags>SQL, SSDT, DACPAC, Database, Migration</Tags>
   </Metadata>
   <Installation>
-    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,18.0)">
+    <!--
+      Lower bound 17.0 with no upper bound is the Visual Studio 2026 install-target
+      form. Visual Studio 2022 matches 17.x. Visual Studio 2026 uses the lower
+      bound only, so the same VSIX installs on both. amd64 and arm64 are separate
+      targets because this package is a project template with no architecture-specific assembly.
+    -->
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,)">
       <ProductArchitecture>amd64</ProductArchitecture>
     </InstallationTarget>
-    <InstallationTarget Id="Microsoft.VisualStudio.Pro" Version="[17.0,18.0)">
+    <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,)">
+      <ProductArchitecture>arm64</ProductArchitecture>
+    </InstallationTarget>
+    <InstallationTarget Id="Microsoft.VisualStudio.Pro" Version="[17.0,)">
       <ProductArchitecture>amd64</ProductArchitecture>
     </InstallationTarget>
-    <InstallationTarget Id="Microsoft.VisualStudio.Enterprise" Version="[17.0,18.0)">
+    <InstallationTarget Id="Microsoft.VisualStudio.Pro" Version="[17.0,)">
+      <ProductArchitecture>arm64</ProductArchitecture>
+    </InstallationTarget>
+    <InstallationTarget Id="Microsoft.VisualStudio.Enterprise" Version="[17.0,)">
       <ProductArchitecture>amd64</ProductArchitecture>
+    </InstallationTarget>
+    <InstallationTarget Id="Microsoft.VisualStudio.Enterprise" Version="[17.0,)">
+      <ProductArchitecture>arm64</ProductArchitecture>
     </InstallationTarget>
   </Installation>
   <Dependencies>

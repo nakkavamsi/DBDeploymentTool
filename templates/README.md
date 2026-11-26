@@ -58,7 +58,7 @@ MyCustomerDb/
 └── .github/workflows/build.yml
 ```
 
-### Visual Studio 2022
+### Visual Studio 2022 and Visual Studio 2026
 
 1. Install the template (`dotnet new install ...` above)
 2. **Restart Visual Studio** (required to refresh templates)
@@ -86,7 +86,7 @@ The `dotnet new install` approach is simpler and works in VS, VS Code, and CI wi
 
 ## Visual Studio VSIX extension (this repo)
 
-A full **VSIX** project is included under `extensions/SqlMigrationDatabaseVsix/`.
+A full **VSIX** project is included under `extensions/SqlMigrationDatabaseVsix/`. The package installs on Visual Studio 2022 and Visual Studio 2026 (amd64 and arm64).
 
 ### Build on Windows
 
@@ -109,7 +109,7 @@ See [extensions/README.md](../extensions/README.md) for full details.
 |------|---------|
 | .NET SDK | 8.0.406 (`global.json`) |
 | Python | 3.x |
-| SQL workload | VS 2022: *Data storage and processing* (optional, for publish UI) |
+| SQL workload | Visual Studio 2022 or 2026: *Data storage and processing* (optional, for publish UI) |
 
 ---
 
