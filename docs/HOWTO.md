@@ -156,6 +156,55 @@ sql-mig run -S localhost -d MyDb -U sa -C --dry-run
 
 `--sync` rebuilds `SchemaModel/` after splitting objects into files.
 
+### Skip objects while bootstrapping
+
+Use manual filters so CDC / system / unwanted objects never become migrations:
+
+```bash
+# Preset: skip cdc schema + common CDC name patterns (fn_cdc_*, sp_cdc_*, cdc_*)
+sql-mig bootstrap --input baseline.sql --version 1.0.0 --skip-cdc --sync
+
+# Or pick filters yourself (repeatable flags)
+sql-mig bootstrap --input baseline.sql --version 1.0.0 \
+  --exclude-schema cdc \
+  --exclude-kind view \
+  --exclude-kind procedure \
+  --exclude-kind function \
+  --exclude-kind role \
+  --exclude-kind user \
+  --exclude-object dbo.sysdiagrams \
+  --exclude-name-pattern '^fn_cdc_' \
+  --sync
+```
+
+Or put the same rules in a filters file:
+
+```text
+# bootstrap.filters
+schema cdc
+kind role
+kind user
+object dbo.sysdiagrams
+pattern ^fn_cdc_
+pattern ^sp_cdc_
+```
+
+```bash
+sql-mig bootstrap --input baseline.sql --version 1.0.0 --filters-file bootstrap.filters --sync
+```
+
+| Filter | Meaning |
+|--------|---------|
+| `--skip-cdc` | Schema `cdc` + name patterns `^fn_cdc_`, `^sp_cdc_`, `^cdc_` |
+| `--exclude-schema` | Skip that schema and objects in it |
+| `--exclude-kind` | `table`, `view`, `procedure`, `function`, `trigger`, `role`, `user`, … |
+| `--exclude-name` | Skip unqualified name (roles, assemblies, …) |
+| `--exclude-object` | Skip `schema.name` |
+| `--exclude-name-pattern` | Case-insensitive regex on name or `schema.name` |
+| `--filters-file` | Same rules from a text file |
+
+Skipped objects are listed on stderr. `CREATE USER` is not emitted by bootstrap today; `--exclude-kind user` / `role` covers the security principals that *are* generated (roles / memberships).
+
 If the target database **already matches** the baseline, do not re-run `1.0.0` against it. Skip that folder:
 
 ```bash

@@ -35,6 +35,7 @@ Examples:
   sql-mig run -S localhost -d MyDb -U sa -C --status
   sql-mig stamp --all
   sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync
+  sql-mig bootstrap --input baseline.sql --version 1.0.0 --skip-cdc
 
 Install into a database project:
   pip install -e /path/to/sql-migration-tools

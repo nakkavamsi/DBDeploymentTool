@@ -45,6 +45,7 @@ sql-mig run -S localhost -d MyDb -U sa -C --status
 sql-mig run -S localhost -d MyDb -U sa -C
 sql-mig stamp --all
 sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync
+sql-mig bootstrap --input baseline.sql --version 1.0.0 --skip-cdc --sync
 ```
 
 ```bash

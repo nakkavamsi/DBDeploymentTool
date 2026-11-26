@@ -6,10 +6,12 @@ Usage:
   sql-mig bootstrap --input baseline.sql --version 1.0.0
   sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync
   sql-mig bootstrap --input baseline.sql --version 1.0.0 --dry-run
+  sql-mig bootstrap --input baseline.sql --version 1.0.0 --skip-cdc
+  sql-mig bootstrap --input baseline.sql --version 1.0.0 --exclude-schema cdc --exclude-kind role
 
 Expects schema-only SQL (SSMS Generate Scripts, SqlPackage script, mssql-scripter, etc.).
 Splits objects into migration files, wraps idempotent guards, stamps Migration-Ids,
-and optionally runs schema sync.
+optionally skips CDC/other objects via manual filters, and can run schema sync.
 """
 
 from __future__ import annotations
@@ -78,6 +80,220 @@ KIND_ORDER = {
     "role_membership": 95,
     "unknown": 99,
 }
+
+# User-facing --exclude-kind aliases -> bootstrap kind and/or SQL object type.
+KIND_FILTER_ALIASES = {
+    "schemas": "schema",
+    "tables": "table",
+    "views": "view",
+    "view": "view",
+    "procs": "procedure",
+    "proc": "procedure",
+    "procedures": "procedure",
+    "procedure": "procedure",
+    "functions": "function",
+    "function": "function",
+    "triggers": "trigger",
+    "trigger": "trigger",
+    "synonyms": "synonym",
+    "roles": "role",
+    "role": "role",
+    "users": "role",  # CREATE USER is not emitted; roles cover security principals we do emit
+    "user": "role",
+    "types": "type",
+    "sequences": "sequence",
+    "assemblies": "assembly",
+    "indexes": "index",
+    "statistics": "statistics",
+    "alters": "alter_table",
+    "alter_table": "alter_table",
+    "role_memberships": "role_membership",
+    "role_membership": "role_membership",
+    "routine": "routine",
+    "routines": "routine",
+}
+
+CDC_DEFAULT_SCHEMAS = ("cdc",)
+CDC_DEFAULT_NAME_PATTERNS = (
+    r"^fn_cdc_",
+    r"^sp_cdc_",
+    r"^cdc_",
+)
+
+
+@dataclass(frozen=True)
+class BootstrapFilters:
+    """Manual skip rules applied while splitting a baseline into migrations."""
+
+    schemas: frozenset[str] = frozenset()
+    kinds: frozenset[str] = frozenset()
+    names: frozenset[str] = frozenset()
+    objects: frozenset[str] = frozenset()
+    name_patterns: tuple[re.Pattern[str], ...] = ()
+
+    def skips(
+        self,
+        *,
+        kind: str,
+        schema: str | None = None,
+        name: str | None = None,
+        object_type: str | None = None,
+    ) -> bool:
+        kind_key = kind.lower()
+        if kind_key in self.kinds:
+            return True
+
+        type_key = (object_type or "").lower()
+        if type_key and type_key in self.kinds:
+            return True
+
+        schema_key = schema.lower() if schema else None
+        name_key = name.lower() if name else None
+
+        if schema_key and schema_key in self.schemas:
+            return True
+        if name_key and name_key in self.names:
+            return True
+        if schema_key and name_key:
+            qualified = f"{schema_key}.{name_key}"
+            if qualified in self.objects:
+                return True
+            for pattern in self.name_patterns:
+                if pattern.search(qualified) or pattern.search(name_key):
+                    return True
+        elif name_key:
+            for pattern in self.name_patterns:
+                if pattern.search(name_key):
+                    return True
+
+        return False
+
+    def describe(self) -> list[str]:
+        lines: list[str] = []
+        if self.schemas:
+            lines.append("schemas=" + ", ".join(sorted(self.schemas)))
+        if self.kinds:
+            lines.append("kinds=" + ", ".join(sorted(self.kinds)))
+        if self.names:
+            lines.append("names=" + ", ".join(sorted(self.names)))
+        if self.objects:
+            lines.append("objects=" + ", ".join(sorted(self.objects)))
+        if self.name_patterns:
+            lines.append(
+                "name-patterns="
+                + ", ".join(pattern.pattern for pattern in self.name_patterns)
+            )
+        return lines
+
+
+def normalize_kind_filter(value: str) -> str:
+    key = value.strip().lower()
+    if not key:
+        raise ValueError("empty --exclude-kind value")
+    return KIND_FILTER_ALIASES.get(key, key)
+
+
+def load_filters_file(path: Path) -> BootstrapFilters:
+    """
+    Load manual filters from a text file.
+
+    Supported lines (case-insensitive keyword, remainder is the value):
+      schema cdc
+      kind view
+      name sysdiagrams
+      object dbo.sysdiagrams
+      pattern ^fn_cdc_
+      # comments and blank lines are ignored
+    """
+    schemas: set[str] = set()
+    kinds: set[str] = set()
+    names: set[str] = set()
+    objects: set[str] = set()
+    patterns: list[re.Pattern[str]] = []
+
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            raise ValueError(
+                f"{path}:{line_number}: expected 'keyword value' (got {raw!r})"
+            )
+        keyword, value = parts[0].lower(), parts[1].strip()
+        if keyword in {"schema", "schemas"}:
+            schemas.add(value.lower())
+        elif keyword in {"kind", "kinds"}:
+            kinds.add(normalize_kind_filter(value))
+        elif keyword in {"name", "names"}:
+            names.add(value.lower())
+        elif keyword in {"object", "objects"}:
+            objects.add(value.lower().lstrip("[").rstrip("]").replace("].[", "."))
+        elif keyword in {"pattern", "patterns", "name-pattern", "name_pattern"}:
+            patterns.append(re.compile(value, re.IGNORECASE))
+        else:
+            raise ValueError(
+                f"{path}:{line_number}: unknown filter keyword {parts[0]!r} "
+                "(use schema, kind, name, object, pattern)"
+            )
+
+    return BootstrapFilters(
+        schemas=frozenset(schemas),
+        kinds=frozenset(kinds),
+        names=frozenset(names),
+        objects=frozenset(objects),
+        name_patterns=tuple(patterns),
+    )
+
+
+def build_bootstrap_filters(
+    *,
+    exclude_schemas: list[str] | None = None,
+    exclude_kinds: list[str] | None = None,
+    exclude_names: list[str] | None = None,
+    exclude_objects: list[str] | None = None,
+    exclude_name_patterns: list[str] | None = None,
+    skip_cdc: bool = False,
+    filters_file: Path | None = None,
+) -> BootstrapFilters:
+    schemas: set[str] = set()
+    kinds: set[str] = set()
+    names: set[str] = set()
+    objects: set[str] = set()
+    patterns: list[re.Pattern[str]] = []
+
+    if filters_file is not None:
+        file_filters = load_filters_file(filters_file)
+        schemas.update(file_filters.schemas)
+        kinds.update(file_filters.kinds)
+        names.update(file_filters.names)
+        objects.update(file_filters.objects)
+        patterns.extend(file_filters.name_patterns)
+
+    for schema in exclude_schemas or []:
+        schemas.add(schema.strip().lower())
+    for kind in exclude_kinds or []:
+        kinds.add(normalize_kind_filter(kind))
+    for name in exclude_names or []:
+        names.add(name.strip().lower())
+    for obj in exclude_objects or []:
+        cleaned = obj.strip().lower().lstrip("[").rstrip("]").replace("].[", ".")
+        objects.add(cleaned)
+    for pattern in exclude_name_patterns or []:
+        patterns.append(re.compile(pattern, re.IGNORECASE))
+
+    if skip_cdc:
+        schemas.update(CDC_DEFAULT_SCHEMAS)
+        for pattern in CDC_DEFAULT_NAME_PATTERNS:
+            patterns.append(re.compile(pattern, re.IGNORECASE))
+
+    return BootstrapFilters(
+        schemas=frozenset(schemas),
+        kinds=frozenset(kinds),
+        names=frozenset(names),
+        objects=frozenset(objects),
+        name_patterns=tuple(patterns),
+    )
 
 NOISE_LINE_PATTERN = re.compile(
     r"^\s*(?:"
@@ -402,15 +618,46 @@ def normalize_migration_sql(sql: str) -> str:
     return sql.strip()
 
 
-def parse_baseline(content: str, sync) -> list[MigrationChunk]:
+def parse_baseline(
+    content: str,
+    sync,
+    filters: BootstrapFilters | None = None,
+) -> tuple[list[MigrationChunk], int]:
     content = normalize_baseline_sql(content)
     if not content:
-        return []
+        return [], 0
 
+    active_filters = filters or BootstrapFilters()
     chunks: list[MigrationChunk] = []
     seen_keys: set[str] = set()
+    skipped = 0
 
-    def add_chunk(kind: str, sort_key: tuple, name_slug: str, sql: str) -> None:
+    def add_chunk(
+        kind: str,
+        sort_key: tuple,
+        name_slug: str,
+        sql: str,
+        *,
+        schema: str | None = None,
+        name: str | None = None,
+        object_type: str | None = None,
+    ) -> None:
+        nonlocal skipped
+        if active_filters.skips(
+            kind=kind,
+            schema=schema,
+            name=name,
+            object_type=object_type,
+        ):
+            skipped += 1
+            if schema and name:
+                label = object_slug(schema, name)
+            else:
+                label = name or name_slug
+            detail = f"{kind}/{object_type}" if object_type else kind
+            print(f"Skipped ({detail}): {label}", file=sys.stderr)
+            return
+
         normalized = normalize_migration_sql(sql)
         if not normalized:
             return
@@ -437,6 +684,8 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(),),
             f"CS_{schema}",
             wrap_schema(sync, statement),
+            schema=schema,
+            object_type="schema",
         )
 
     for statement in sync.extract_type_statements(content):
@@ -450,6 +699,9 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(), name.lower()),
             object_slug(schema, name),
             to_create_or_alter(statement),
+            schema=schema,
+            name=name,
+            object_type="type",
         )
 
     for statement in sync.extract_sequence_statements(content):
@@ -463,6 +715,9 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(), name.lower()),
             object_slug(schema, name),
             wrap_sequence(sync, statement),
+            schema=schema,
+            name=name,
+            object_type="sequence",
         )
 
     for statement in sync.extract_assembly_statements(content):
@@ -475,6 +730,8 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (name.lower(),),
             f"assembly.{name}",
             statement.strip(),
+            name=name,
+            object_type="assembly",
         )
 
     table_chunks: list[MigrationChunk] = []
@@ -486,6 +743,15 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
         if not parsed:
             continue
         schema, table, _ = parsed
+        if active_filters.skips(
+            kind="table",
+            schema=schema,
+            name=table,
+            object_type="table",
+        ):
+            skipped += 1
+            print(f"Skipped (table): {object_slug(schema, table)}", file=sys.stderr)
+            continue
         create_sql, fk_alters = split_create_table_fks(sync, statement)
         table_chunks.append(
             MigrationChunk(
@@ -515,11 +781,16 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
     }
 
     for table_chunk in ordered_tables:
+        schema_name = str(table_chunk.sort_key[2]) if len(table_chunk.sort_key) >= 4 else None
+        table_name = str(table_chunk.sort_key[3]) if len(table_chunk.sort_key) >= 4 else None
         add_chunk(
             table_chunk.kind,
             table_chunk.sort_key[1:],
             table_chunk.name_slug,
             table_chunk.sql,
+            schema=schema_name,
+            name=table_name,
+            object_type="table",
         )
 
     alter_table_index = 0
@@ -559,10 +830,28 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             ),
             f"{object_slug(schema_name, table_name)}.{slug_suffix}",
             alter_sql,
+            schema=schema_name,
+            name=table_name,
+            object_type="alter_table",
         )
         alter_table_index += 1
 
     for fk_alter in deferred_fk_alters:
+        from_schema, from_table = fk_alter.from_table
+        if active_filters.skips(
+            kind="alter_table",
+            schema=from_schema,
+            name=from_table,
+            object_type="alter_table",
+        ) or active_filters.skips(
+            kind="table",
+            schema=fk_alter.referenced_table[0],
+            name=fk_alter.referenced_table[1],
+            object_type="table",
+        ):
+            skipped += 1
+            print(f"Skipped (alter_table/fk): {fk_alter.name_slug}", file=sys.stderr)
+            continue
         table_index = table_order_index.get(
             fk_alter.from_table,
             len(table_order_index),
@@ -578,6 +867,9 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             ),
             fk_alter.name_slug,
             fk_alter.alter_sql,
+            schema=from_schema,
+            name=from_table,
+            object_type="alter_table",
         )
 
     for statement in sync.extract_index_statements(content):
@@ -590,6 +882,9 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(), table.lower(), index_name.lower()),
             f"{object_slug(schema, table)}.add_{index_name}",
             statement,
+            schema=schema,
+            name=table,
+            object_type="index",
         )
 
     for statement in sync.extract_statistics_statements(content):
@@ -602,12 +897,16 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(), table.lower(), statistic_name.lower()),
             f"{object_slug(schema, table)}.add_{statistic_name}",
             statement,
+            schema=schema,
+            name=table,
+            object_type="statistics",
         )
 
     for statement in sync.extract_routine_statements(content):
         match = sync.CREATE_PATTERN.search(statement)
         if not match:
             continue
+        object_type = match.group(1).lower()
         schema = sync.strip_brackets(match.group(2))
         name = sync.strip_brackets(match.group(3))
         add_chunk(
@@ -615,6 +914,9 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(), name.lower()),
             object_slug(schema, name),
             to_create_or_alter(statement),
+            schema=schema,
+            name=name,
+            object_type=object_type,
         )
 
     for statement in sync.extract_synonym_statements(content):
@@ -628,6 +930,9 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (schema.lower(), name.lower()),
             object_slug(schema, name),
             wrap_synonym(sync, statement),
+            schema=schema,
+            name=name,
+            object_type="synonym",
         )
 
     for statement in sync.extract_role_statements(content):
@@ -640,6 +945,8 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
             (role.lower(),),
             f"security.{role}",
             wrap_role(sync, statement),
+            name=role,
+            object_type="role",
         )
 
     for statement in sync.extract_role_membership_statements(content):
@@ -647,14 +954,33 @@ def parse_baseline(content: str, sync) -> list[MigrationChunk]:
         if not membership:
             continue
         role, member = membership
+        if active_filters.skips(
+            kind="role_membership",
+            name=role,
+            object_type="role_membership",
+        ) or active_filters.skips(
+            kind="role",
+            name=member,
+            object_type="user",
+        ) or active_filters.skips(
+            kind="role",
+            name=role,
+            object_type="role",
+        ):
+            skipped += 1
+            print(f"Skipped (role_membership): {role} <- {member}", file=sys.stderr)
+            continue
         add_chunk(
             "role_membership",
             (role.lower(), member.lower()),
             f"security.{role}_add_{member}",
             sync.normalize_role_membership_sql(role, member),
+            name=role,
+            object_type="role_membership",
         )
 
-    return sorted(chunks, key=lambda chunk: (chunk.sort_key, chunk.name_slug))
+    return sorted(chunks, key=lambda chunk: (chunk.sort_key, chunk.name_slug)), skipped
+
 
 
 def find_unparsed_batches(content: str, sync, chunks: list[MigrationChunk]) -> list[str]:
@@ -757,7 +1083,64 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sync",
         action="store_true",
-        help="Run sync-schema-from-migrations.py after writing migration files",
+        help="Run SchemaModel sync after writing migration files",
+    )
+    parser.add_argument(
+        "--skip-cdc",
+        action="store_true",
+        help="Skip CDC schema/objects (schema cdc + fn_cdc_/sp_cdc_/cdc_ name patterns)",
+    )
+    parser.add_argument(
+        "--exclude-schema",
+        action="append",
+        default=[],
+        dest="exclude_schemas",
+        metavar="NAME",
+        help="Skip a schema and its objects (repeatable), e.g. --exclude-schema cdc",
+    )
+    parser.add_argument(
+        "--exclude-kind",
+        action="append",
+        default=[],
+        dest="exclude_kinds",
+        metavar="KIND",
+        help=(
+            "Skip an object kind (repeatable): "
+            "schema, table, view, procedure, function, trigger, synonym, role, user, "
+            "type, sequence, assembly, index, statistics, alter_table, role_membership"
+        ),
+    )
+    parser.add_argument(
+        "--exclude-name",
+        action="append",
+        default=[],
+        dest="exclude_names",
+        metavar="NAME",
+        help="Skip an unqualified object/role name (repeatable)",
+    )
+    parser.add_argument(
+        "--exclude-object",
+        action="append",
+        default=[],
+        dest="exclude_objects",
+        metavar="SCHEMA.NAME",
+        help="Skip a qualified object (repeatable), e.g. --exclude-object dbo.sysdiagrams",
+    )
+    parser.add_argument(
+        "--exclude-name-pattern",
+        action="append",
+        default=[],
+        dest="exclude_name_patterns",
+        metavar="REGEX",
+        help="Skip names/qualified names matching a regex (repeatable, case-insensitive)",
+    )
+    parser.add_argument(
+        "--filters-file",
+        type=Path,
+        help=(
+            "Manual filters file with lines: "
+            "'schema NAME', 'kind KIND', 'name NAME', 'object SCHEMA.NAME', 'pattern REGEX'"
+        ),
     )
     return parser.parse_args()
 
@@ -778,13 +1161,33 @@ def main() -> int:
         print(f"ERROR: Baseline file not found: {input_path}", file=sys.stderr)
         return 1
 
+    filters_file = args.filters_file.resolve() if args.filters_file else None
+    if filters_file is not None and not filters_file.is_file():
+        print(f"ERROR: Filters file not found: {filters_file}", file=sys.stderr)
+        return 1
+
+    try:
+        filters = build_bootstrap_filters(
+            exclude_schemas=args.exclude_schemas,
+            exclude_kinds=args.exclude_kinds,
+            exclude_names=args.exclude_names,
+            exclude_objects=args.exclude_objects,
+            exclude_name_patterns=args.exclude_name_patterns,
+            skip_cdc=args.skip_cdc,
+            filters_file=filters_file,
+        )
+    except (ValueError, re.error) as error:
+        print(f"ERROR: Invalid bootstrap filters: {error}", file=sys.stderr)
+        return 1
+
     sync = load_sync_module()
     content = input_path.read_text(encoding="utf-8")
-    chunks = parse_baseline(content, sync)
+    chunks, skipped = parse_baseline(content, sync, filters=filters)
 
     if not chunks:
         print(
-            "ERROR: No supported schema objects found in baseline SQL.",
+            "ERROR: No supported schema objects found in baseline SQL"
+            + (" after applying filters." if skipped else "."),
             file=sys.stderr,
         )
         return 1
@@ -818,9 +1221,16 @@ def main() -> int:
             preview = batch.splitlines()[0][:120]
             print(f"  skipped batch {index}: {preview}", file=sys.stderr)
 
+    filter_lines = filters.describe()
+    if filter_lines:
+        print("Bootstrap filters:")
+        for line in filter_lines:
+            print(f"  {line}")
+
     print(
         f"Parsed {len(chunks)} object(s) from {input_path.name} "
         f"-> Deployments/Migrations/{args.version}/"
+        + (f" ({skipped} skipped by filters)" if skipped else "")
     )
     write_migration_files(chunks, version_dir, project_root, args.dry_run)
 

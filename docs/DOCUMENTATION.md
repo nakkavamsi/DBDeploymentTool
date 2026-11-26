@@ -330,20 +330,26 @@ sql-mig bootstrap --input baseline.sql --version 1.0.0
 sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync
 sql-mig bootstrap --input baseline.sql --version 1.0.0 --dry-run
 sql-mig bootstrap --input baseline.sql --version 1.0.0 --force
+sql-mig bootstrap --input baseline.sql --version 1.0.0 --skip-cdc --sync
+sql-mig bootstrap --input baseline.sql --version 1.0.0 \
+  --exclude-schema cdc --exclude-kind role --exclude-kind user --sync
 ```
 
 **Behavior:**
 
 1. Strip block comments, `USE [db]`, and session `SET` noise.
 2. Parse objects using the same extractors as `sync`.
-3. Wrap idempotent guards (`IF OBJECT_ID IS NULL`, `IF SCHEMA_ID IS NULL`, `CREATE OR ALTER` for routines/types).
-4. Peel foreign keys out of `CREATE TABLE` into later `ALTER TABLE ... ADD CONSTRAINT` files so tables can be created in dependency order.
-5. Topologically sort tables by FK graph; warn and keep original order on cycles.
-6. Write `{seq:02d}_{slug}.sql` with a Migration-Id.
-7. Warn about unrecognized `GO` batches (skipped).
-8. Optionally `--sync` SchemaModel.
+3. Apply **manual skip filters** (`--skip-cdc`, `--exclude-schema`, `--exclude-kind`, `--exclude-name`, `--exclude-object`, `--exclude-name-pattern`, `--filters-file`).
+4. Wrap idempotent guards (`IF OBJECT_ID IS NULL`, `IF SCHEMA_ID IS NULL`, `CREATE OR ALTER` for routines/types).
+5. Peel foreign keys out of `CREATE TABLE` into later `ALTER TABLE ... ADD CONSTRAINT` files so tables can be created in dependency order.
+6. Topologically sort tables by FK graph; warn and keep original order on cycles.
+7. Write `{seq:02d}_{slug}.sql` with a Migration-Id.
+8. Warn about unrecognized `GO` batches (skipped).
+9. Optionally `--sync` SchemaModel.
 
 `--force` deletes existing `.sql` in that version folder first. Without `--force`, a non-empty folder is an error.
+
+`--skip-cdc` is shorthand for excluding schema `cdc` plus name patterns `^fn_cdc_`, `^sp_cdc_`, and `^cdc_`. Filters can also live in a text file (`schema`, `kind`, `name`, `object`, `pattern` lines).
 
 Object write order (`KIND_ORDER`):
 
