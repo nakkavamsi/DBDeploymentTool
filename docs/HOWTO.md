@@ -81,6 +81,7 @@ sql-mig sync
 | `sql-mig new` | Start a new change |
 | `sql-mig stamp` | Add missing `-- Migration-Id` headers |
 | `sql-mig sync` | Rebuild `SchemaModel/` after editing migrations |
+| `sql-mig check` | Compile every migration script before you apply it |
 | `sql-mig run` | Apply pending scripts to SQL Server |
 | `sql-mig bootstrap` | Split a baseline schema export into migration files |
 
@@ -120,12 +121,15 @@ sql-mig sync
 dotnet build Databasecode.sqlproj
 ```
 
-4. Check what would run, then apply:
+4. Compile the migration chain, then apply it:
 
 ```bash
+sql-mig check -S localhost -U sa -C
 sql-mig run -S localhost -d MyDb -U sa -C --status
 sql-mig run -S localhost -d MyDb -U sa -C
 ```
+
+`check` prints the script order, parses every file, then runs that chain on a scratch database. See [Script order](#script-order) and [Compile migrations](#compile-migrations-sql-mig-check).
 
 Windows / integrated auth:
 
@@ -260,6 +264,130 @@ History for that script is recorded **in that database**, not necessarily the `-
 
 ---
 
+## Script order
+
+`sync`, `check`, and `run` walk migrations the same way:
+
+1. Version folders from lowest `MAJOR.MINOR.PATCH` to highest (`1.0.0`, then `1.1.0`, then `2.0.0`).
+2. Inside a folder, filenames from A to Z.
+
+`sql-mig new` prefixes `01_`, `02_`, … so that filename order stays under your control. The `-- Migration-Id` header identifies the script in history. It does not decide when the script runs. `--exclude-version` and `--up-to-version` drop folders from this list before compile or apply.
+
+A foreign key, a procedure, or a view can use an object only after the script that creates it has already run. Put the dependency in an earlier filename.
+
+```text
+Deployments/Migrations/1.0.0/
+  01_security.sales.sql              CREATE SCHEMA [sales];
+  02_dbo.Customer.sql                primary key
+  03_sales.Order.sql                 table only
+  04_sales.Order.add_customer.sql    ALTER TABLE ... ADD CONSTRAINT FK
+  05_dbo.usp_GetOrders.sql           procedure that joins both tables
+```
+
+```sql
+-- 01_security.sales.sql
+-- Migration-Id: ...
+CREATE SCHEMA [sales];
+GO
+```
+
+`CREATE SCHEMA` is its own batch. End it with `GO` before any object in that schema. The next file starts a new batch, so the schema file can contain only that statement.
+
+```sql
+-- 04_sales.Order.add_customer.sql
+-- Migration-Id: ...
+ALTER TABLE [sales].[Order]
+    ADD CONSTRAINT [FK_Order_Customer]
+    FOREIGN KEY ([CustomerId]) REFERENCES [dbo].[Customer] ([CustomerId]);
+```
+
+Write the files this way:
+
+| Shape | Where it goes |
+|-------|----------------|
+| Schema | Its own file, statement ended with `GO` |
+| Parent table and its primary key | Before any child that references it |
+| Child table | Create the table first. Add outbound foreign keys in a later file |
+| Self foreign key (`Employee.ManagerId` → `Employee.EmployeeId`) | Inside that table's `CREATE TABLE` |
+| Composite foreign key | After the composite primary key exists, in a later `ALTER TABLE` |
+| Two tables that reference each other | Create both with primary keys, then one later file adds both foreign keys |
+| Procedure, view, function | After every table and column it names |
+
+`sql-mig bootstrap` already writes this order: schemas and tables first, foreign keys peeled into later `ALTER TABLE` files, then routines. Hand-written migrations follow the same filename rule. `check` and `run` do not reorder files to satisfy foreign keys.
+
+## Compile migrations (`sql-mig check`)
+
+`dotnet build` compiles `SchemaModel/` only. Files under `Deployments/Migrations/` are removed from the SQL project, so a successful dacpac build does not prove those scripts are valid.
+
+`sql-mig check` prints the script order, then runs two passes on that list. Both stay on until you stop one.
+
+1. **Parse.** `SET PARSEONLY ON` for every file, against `master` (or `-d` when you pass it for a parse-only or `--noexec` run). Every syntax error is reported.
+2. **Compile.** The chain executes on a database named `sqlmig_check_<timestamp>_<hex>`, then that database is dropped. A later script sees objects from earlier scripts. The first error stops this pass. History is not written. The login needs permission to create and drop a database.
+
+A syntax error in parse does not turn compile off. Compile still runs, and the command fails if either pass fails.
+
+```bash
+sql-mig check -S localhost -U sa -C
+sql-mig check -S localhost -U sa -C --exclude-version 9.9.9
+sql-mig check -S localhost -U sa -C --up-to-version 1.0.0
+sql-mig check -S localhost -U sa -C --skip-parse
+sql-mig check -S localhost -U sa -C --skip-compile
+sql-mig check -S localhost -d MyDb -U sa -C --noexec
+```
+
+`--skip-parse` stops parse. `--skip-compile` (or `--parse-only`) stops compile. `--noexec` keeps both passes and changes compile to `SET NOEXEC ON` against `-d`, so nothing is executed and nothing is dropped.
+
+Before either pass, the command prints the plan:
+
+```text
+Script order: version folders from lowest MAJOR.MINOR.PATCH to highest,
+then filenames A to Z inside each folder. check and run use this order.
+The Migration-Id does not change it.
+
+Parse and compile both run. Stop one with --skip-parse or --skip-compile.
+
+Parse: SET PARSEONLY ON for each of 5 script(s) against master.
+Each file is parsed on its own. Every syntax error is reported.
+
+Compile: execute 5 script(s) on scratch database sqlmig_check_20261127120000_ab12cd, then drop it.
+Each script runs after the ones above it, so a foreign key or procedure
+can use objects those earlier scripts created. Stops at the first error.
+dbo.__MigrationHistory is not written.
+
+Order:
+  1.0.0
+      1  Deployments/Migrations/1.0.0/01_security.sales.sql
+      2  Deployments/Migrations/1.0.0/02_dbo.Customer.sql
+      3  Deployments/Migrations/1.0.0/03_sales.Order.sql
+      4  Deployments/Migrations/1.0.0/04_sales.Order.add_customer.sql
+      5  Deployments/Migrations/1.0.0/05_dbo.usp_GetOrders.sql
+```
+
+Each pass then walks that list:
+
+```text
+Parse: SET PARSEONLY ON against master.
+
+-> [1/5] Deployments/Migrations/1.0.0/01_security.sales.sql
+   ok
+Parse: 5 migration script(s), no issues.
+
+Compile: execute on scratch database sqlmig_check_20261127120000_ab12cd.
+
+-> [1/5] Deployments/Migrations/1.0.0/01_security.sales.sql
+   ok
+```
+
+| Pass | What it proves |
+|------|----------------|
+| Parse | The text is legal T-SQL. A missing foreign-key parent still passes here. |
+| Compile | The chain executes in the printed order. A foreign key whose parent is still in a later file fails here (`references invalid table`). A procedure that names a missing column fails here (`Invalid column name`). |
+| `--noexec` compile | Each file is compiled alone with `SET NOEXEC ON`. Syntax errors are reported and the database is unchanged. Parse still runs. |
+
+The execute compile refuses `-d`, so an existing database is never dropped. `--noexec` needs `-d`. `--up-to-version 1.0.0` limits both passes to folders up through that version.
+
+---
+
 ## Stamp IDs on hand-written files
 
 Every migration must start with:
@@ -287,7 +415,7 @@ Folders under `Deployments/Migrations/` **must** be `MAJOR.MINOR.PATCH`:
 - Valid: `1.0.0`, `2.3.0`, `10.0.1`
 - Invalid: `1.1`, `v1.0.0`, `1.0.0-beta`
 
-`sync` and `run` process versions in semver order, then files in filename order. `sql-mig new` prefixes `01_`, `02_`, … so order stays stable.
+`sync`, `check`, and `run` process versions in semver order, then files in filename order. Details and the primary-key / foreign-key layout: [Script order](#script-order).
 
 ---
 
@@ -319,12 +447,14 @@ Folders under `Deployments/Migrations/` **must** be `MAJOR.MINOR.PATCH`:
 
 | Symptom | What to do |
 |---------|------------|
-| `Unknown command` | Use `sql-mig --help`. Commands are `sync`, `run`, `new`, `stamp`, `bootstrap`. |
+| `Unknown command` | Use `sql-mig --help`. Commands are `sync`, `run`, `new`, `stamp`, `bootstrap`, `check`. |
 | Missing `sqlcmd` | Install SQL Server command-line tools / mssql-tools and retry `run`. |
 | Missing Migration-Id | `sql-mig stamp --all` or `sql-mig sync`. |
 | Invalid folder name | Rename to `MAJOR.MINOR.PATCH`. |
 | Duplicate Migration-Id | Two files share an ID; give one a new ID with `stamp` (do not `--refresh` — that keeps the ID). |
 | SchemaModel looks wrong | Edit the migration, not SchemaModel, then `sql-mig sync`. |
 | Script failed mid-run | That file was not recorded. Fix it and `sql-mig run` again. |
+| `references invalid table` during `check` | The foreign key file sorts before the parent table. Move the parent to an earlier filename and add the key with a later `ALTER TABLE`. |
+| `Invalid column name` during `check` | The procedure or view names a column the earlier scripts did not create. Fix the column or the script order, then run the default `sql-mig check` again. |
 
 For parser limits, history table columns, and module map, see [DOCUMENTATION.md](DOCUMENTATION.md).

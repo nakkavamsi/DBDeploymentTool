@@ -1,4 +1,4 @@
-# Shared migration tooling (sync, run, new, stamp, bootstrap).
+# Shared migration tooling (sync, check, run, new, stamp, bootstrap).
 # Prefer GitHub once published; fall back to a sibling local checkout.
 
 # GitHub (recommended for CI / teammates):

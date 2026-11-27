@@ -22,7 +22,7 @@ From GitHub:
 pip install "sql-migration-tools @ git+https://github.com/nakkavamsi/DBDeploymentTool.git"
 ```
 
-Requires Python 3.10+. `sql-mig run` also needs `sqlcmd` on `PATH`.
+Requires Python 3.10+. `sql-mig check` and `sql-mig run` also need `sqlcmd` on `PATH`.
 
 ## Commands
 
@@ -33,6 +33,7 @@ Run these from the **database project** directory (not this tools repo). `--proj
 | `sql-mig new` | Scaffold a new migration with `Migration-Id` |
 | `sql-mig stamp` | Stamp missing `Migration-Id` headers |
 | `sql-mig sync` | Rebuild `SchemaModel/` from `Deployments/Migrations/` |
+| `sql-mig check` | Parse and compile migrations in deploy order. Both passes run unless `--skip-parse` or `--skip-compile` stops one |
 | `sql-mig run` | Apply pending migrations via sqlcmd + history tables |
 | `sql-mig bootstrap` | Split a baseline SQL export into migration files |
 
@@ -41,6 +42,7 @@ cd MyDatabaseProject
 
 sql-mig new --version 2.3.0 --name dbo.person.add_status
 sql-mig sync
+sql-mig check -S localhost -U sa -C
 sql-mig run -S localhost -d MyDb -U sa -C --status
 sql-mig run -S localhost -d MyDb -U sa -C
 sql-mig stamp --all
@@ -56,15 +58,16 @@ sql-mig run --help
 ## Typical loop
 
 1. `sql-mig new --version X.Y.Z --name some.change`
-2. Edit the generated SQL (keep the `-- Migration-Id` header).
+2. Edit the generated SQL (keep the `-- Migration-Id` header). Name files `01_`, `02_`, … so parents and foreign keys run in that order.
 3. `sql-mig sync` so `SchemaModel/` matches migrations.
-4. `sql-mig run -S ... -d ...` to apply pending scripts.
+4. `sql-mig check -S ...` to parse every script, then compile that same order on a scratch database.
+5. `sql-mig run -S ... -d ...` to apply pending scripts.
 
-Migrations are the source of truth. Do not edit `SchemaModel/` by hand.
+Migrations are the source of truth. Do not edit `SchemaModel/` by hand. Script order and what each compile mode proves: [docs/HOWTO.md](docs/HOWTO.md#script-order).
 
 ## Optional wrappers and Cursor hook
 
-`scripts/` contains thin Python wrappers (`new-migration.py`, `stamp-migration-id.py`, `sync-schema-from-migrations.py`, `run-migrations.py`, `bootstrap-from-baseline.py`). Prefer `sql-mig`. Copy `scripts/` into a database project only if you want the old `python3 scripts/…` commands.
+`scripts/` contains thin Python wrappers (`new-migration.py`, `stamp-migration-id.py`, `sync-schema-from-migrations.py`, `run-migrations.py`, `bootstrap-from-baseline.py`, `check-migrations.py`). Prefer `sql-mig`. Copy `scripts/` into a database project only if you want the old `python3 scripts/…` commands.
 
 `.cursor/` stamps `-- Migration-Id` after **Agent** edits under `Deployments/Migrations/`. Copy that folder into each database project workspace if you want the same behavior. Details: [docs/USING-FROM-DATABASE-PROJECTS.md](docs/USING-FROM-DATABASE-PROJECTS.md#optional-cursor-hook).
 

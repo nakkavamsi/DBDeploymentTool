@@ -12,6 +12,7 @@ COMMANDS = {
     "new": "sql_mig.new_migration",
     "stamp": "sql_mig.stamp",
     "bootstrap": "sql_mig.bootstrap",
+    "check": "sql_mig.check",
 }
 
 
@@ -28,10 +29,12 @@ Commands:
   new        Scaffold a new migration script
   stamp      Stamp -- Migration-Id headers
   bootstrap  Split a baseline SQL export into migration files
+  check      Parse and compile migrations in deploy order
 
 Examples:
   sql-mig sync
   sql-mig new --version 2.3.0 --name dbo.person.add_status
+  sql-mig check -S localhost -U sa -C
   sql-mig run -S localhost -d MyDb -U sa -C --status
   sql-mig stamp --all
   sql-mig bootstrap --input baseline.sql --version 1.0.0 --sync

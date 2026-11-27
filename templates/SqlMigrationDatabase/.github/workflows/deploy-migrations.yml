@@ -85,6 +85,23 @@ jobs:
           /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -d master -Q \
             "IF DB_ID(N'${{ env.INTEGRATION_DATABASE }}') IS NULL CREATE DATABASE [${{ env.INTEGRATION_DATABASE }}];"
 
+      # Parse every migration, then compile the chain on a scratch database.
+      # Both passes stay on. --skip-parse or --skip-compile stops one.
+      - name: Parse and compile migration scripts
+        env:
+          SQLCMDPASSWORD: ${{ env.INTEGRATION_SA_PASSWORD }}
+        run: |
+          EXCLUDE_ARGS=""
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ inputs.exclude_test_versions }}" != "false" ]; then
+            EXCLUDE_ARGS="--exclude-version 9.9.9"
+          fi
+
+          sql-mig check \
+            -S localhost \
+            -U sa \
+            -C \
+            $EXCLUDE_ARGS
+
       - name: Apply migrations
         env:
           SQLCMDPASSWORD: ${{ env.INTEGRATION_SA_PASSWORD }}

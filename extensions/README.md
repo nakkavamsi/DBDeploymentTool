@@ -42,6 +42,7 @@ Restart Visual Studio.
 2. Search: **SQL Server Database (Migration-Driven)**
 3. Name the project → Create
 4. Build (requires Python on PATH for schema sync)
+5. `sql-mig check -S ... -U ... -C` parses `Deployments/Migrations` and then compiles that order. Both passes run unless `--skip-parse` or `--skip-compile` stops one. `dotnet build` does not compile those scripts.
 
 ## Update the template
 

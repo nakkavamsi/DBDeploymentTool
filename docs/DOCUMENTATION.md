@@ -54,10 +54,11 @@ sql-migration-tools/
     ├── stamp.py                # sql-mig stamp
     ├── sync.py                 # sql-mig sync (largest module)
     ├── run.py                  # sql-mig run
-    └── bootstrap.py            # sql-mig bootstrap
+    ├── bootstrap.py            # sql-mig bootstrap
+    └── check.py                # sql-mig check
 ```
 
-There are **no runtime dependencies**. The only external binary required is `sqlcmd` (for `sql-mig run`).
+There are **no runtime dependencies**. The only external binary required is `sqlcmd` (for `sql-mig check` and `sql-mig run`).
 
 ### Packaging
 
@@ -124,9 +125,19 @@ Migration folders **must** be semantic versions: `MAJOR.MINOR.PATCH`.
 - Valid: `1.0.0`, `2.3.0`, `10.0.1`
 - Invalid: `1.1`, `v1.0.0`, `1.0.0-beta`
 
-`sync` and `run` exit with an error if any non-hidden subdirectory fails that pattern.
+`sync`, `check`, and `run` exit with an error if any non-hidden subdirectory fails that pattern.
 
-Files inside a version folder are processed in **filename order**. `sql-mig new` prefixes a two-digit sequence (`01_`, `02_`, …) so order is stable.
+Files inside a version folder are processed in **filename order**. `sql-mig new` prefixes a two-digit sequence (`01_`, `02_`, …) so order is stable. The `-- Migration-Id` header is identity for history. It is not a sort key.
+
+`check` and `run` share `discover_migration_scripts`:
+
+1. Keep folders whose names match `MAJOR.MINOR.PATCH`.
+2. Drop folders named by `--exclude-version`.
+3. Drop folders newer than `--up-to-version`.
+4. Sort the remaining folders by `(major, minor, patch)`.
+5. Inside each folder, sort `*.sql` by filename.
+
+A later script may reference an object only after the file that creates it. For a primary key / foreign key chain that means: schema file (`CREATE SCHEMA` … `GO`), parent table, child table without the outbound foreign key, then `ALTER TABLE … ADD CONSTRAINT`, then procedures. `bootstrap` writes that shape. `check` does not reorder files to satisfy foreign keys; it compiles the filename order and fails when that order is wrong. Full layout and examples: [HOWTO.md — Script order](HOWTO.md#script-order).
 
 ---
 
@@ -135,7 +146,7 @@ Files inside a version folder are processed in **filename order**. `sql-mig new`
 `sql_mig.cli` is a thin dispatcher. It does not use `argparse` subparsers.
 
 ```
-sql-mig [sync|run|new|stamp|bootstrap] [options]
+sql-mig [sync|run|new|stamp|bootstrap|check] [options]
 ```
 
 Flow:
@@ -154,6 +165,7 @@ Flow:
 | `new` | `sql_mig.new_migration` | Scaffold a stamped migration file |
 | `stamp` | `sql_mig.stamp` | Add or normalize `-- Migration-Id` headers |
 | `bootstrap` | `sql_mig.bootstrap` | Split a baseline export into migrations |
+| `check` | `sql_mig.check` | Compile every migration script with sqlcmd |
 
 ---
 
@@ -357,6 +369,31 @@ Object write order (`KIND_ORDER`):
 
 ---
 
+### 6.6 `sql-mig check`
+
+Parses and compiles `Deployments/Migrations/**/*.sql` through `sqlcmd`, in the order from [Version folders](#version-folders). These files are excluded from the `.sqlproj`, so the dacpac build does not see them. Both passes run unless a flag stops one. The process exit code is 1 when either pass fails.
+
+```bash
+sql-mig check -S localhost -U sa -C
+sql-mig check -S localhost -U sa -C --skip-parse
+sql-mig check -S localhost -U sa -C --skip-compile
+sql-mig check -S localhost -d MyDb -U sa -C --noexec
+```
+
+`compile_plan_lines` prints the plan before sqlcmd runs: which passes are on, then the numbered file list grouped by version. `check_scripts` walks that list once per pass and prints `-> [i/n] <path>` and `ok` or `ERROR`.
+
+| Pass | Engine setting | Database | What it proves | On error |
+|------|----------------|----------|----------------|----------|
+| Parse (always, unless `--skip-parse`) | `SET PARSEONLY ON` in a sibling `.{stem}.sqlmig-check.sql`, then deleted | `master`, or `-d` when compile is stopped or `--noexec` is set | Syntax. Object names stay unresolved. | Report every failure, then continue to compile |
+| Compile (always, unless `--skip-compile` or `--parse-only`) | execute the file | New `sqlmig_check_*` database, dropped afterward | The chain. A foreign key whose parent script has not run fails (`Msg 1767`). A procedure that names a missing column fails (`Msg 207`). | Stop at the first failure |
+| Compile with `--noexec` | `SET NOEXEC ON`, same wrapper file | Existing `-d` | Syntax, one file at a time. The database is unchanged. Parse still runs. | Report every failure |
+
+The execute compile refuses `-d`, so a user database is never the one that gets dropped. `--noexec` requires `-d`. `--skip-parse` together with `--skip-compile` is an error. No rows are written to `dbo.__MigrationHistory`. `script_has_sql_error` treats a non-zero sqlcmd exit, or a `Msg` at level 11 or higher, as a failure.
+
+Parse and `--noexec` still succeed for a foreign key whose parent is missing and for a procedure that selects a column that does not exist. SQL Server defers that procedure name check until the procedure runs. The execute compile is the pass that proves those dependencies.
+
+---
+
 ## 7. Schema sync internals
 
 ### 7.1 `TableModel`
@@ -504,6 +541,7 @@ sql-mig new --version 2.3.0 --name dbo.person.add_status
 # edit the generated SQL
 sql-mig sync
 dotnet build Databasecode.sqlproj
+sql-mig check -S localhost -U sa -C
 sql-mig run -S localhost -d MyDb -U sa -C --status
 sql-mig run -S localhost -d MyDb -U sa -C
 ```
@@ -523,6 +561,7 @@ If the database already matches the baseline, either skip applying `1.0.0` (`--e
 ```yaml
 - run: pip install "sql-migration-tools @ git+https://github.com/nakkavamsi/DBDeploymentTool.git"
 - run: sql-mig sync
+- run: sql-mig check -S ${{ env.SQL_HOST }} -U sa -P "$SQL_PASSWORD" -C
 - run: sql-mig run -S ${{ env.SQL_HOST }} -d MyDb -U sa -P "$SQL_PASSWORD" -C
 ```
 
@@ -546,9 +585,11 @@ cli.py
   │     └── migration_id.py
   ├── stamp.py
   │     └── migration_id.py
-  └── bootstrap.py
-        ├── migration_id.py
-        └── sync.py                  (parsers, unwrap, path helpers)
+  ├── bootstrap.py
+  │     ├── migration_id.py
+  │     └── sync.py                  (parsers, unwrap, path helpers)
+  └── check.py
+        └── run.py                   (script discovery, sqlcmd runner)
 ```
 
 `bootstrap` reuses `sync` extractors so bootstrap and schema generation stay aligned. `run` does **not** import `sync`; applying SQL and generating SchemaModel are independent.

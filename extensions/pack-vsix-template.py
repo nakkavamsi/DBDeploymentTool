@@ -63,7 +63,7 @@ def write_vstemplate(target_dir: Path) -> None:
   xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
   <TemplateData>
     <Name>SQL Server Database (Migration-Driven)</Name>
-    <Description>SQL Server dacpac project with semver migrations, SchemaModel sync, baseline bootstrap, Migration-Id tooling, and CI.</Description>
+    <Description>SQL Server dacpac project with semver migrations, SchemaModel sync, migration parse and compile, baseline bootstrap, Migration-Id tooling, and CI.</Description>
     <ProjectType>Database</ProjectType>
     <ProjectSubType>SQL</ProjectSubType>
     <SortOrder>1000</SortOrder>
@@ -99,10 +99,12 @@ def write_vstemplate(target_dir: Path) -> None:
       <Folder Name=".github" TargetFolderName=".github">
         <Folder Name="workflows" TargetFolderName="workflows">
           <ProjectItem ReplaceParameters="true">.github\\workflows\\build.yml</ProjectItem>
+          <ProjectItem ReplaceParameters="true">.github\\workflows\\deploy-migrations.yml</ProjectItem>
         </Folder>
       </Folder>
       <ProjectItem ReplaceParameters="true">global.json</ProjectItem>
       <ProjectItem ReplaceParameters="true">README.md</ProjectItem>
+      <ProjectItem ReplaceParameters="false">requirements.txt</ProjectItem>
       <ProjectItem ReplaceParameters="false">.gitignore</ProjectItem>
     </Project>
   </TemplateContent>

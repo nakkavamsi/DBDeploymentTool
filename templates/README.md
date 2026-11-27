@@ -7,8 +7,9 @@ Reusable template for creating new **migration-driven SQL Server database** repo
 - `Databasecode.sqlproj` (Microsoft.Build.Sql 2.2.0)
 - `Deployments/Migrations/` + `Deployments/Rollback/`
 - `sql-mig sync` → `SchemaModel/` → `.dacpac`
+- `sql-mig check` parses every migration, then compiles that filename order on a scratch database
 - Migration-Id scaffolding (`sql-mig new`, auto-stamp on build)
-- GitHub Actions CI
+- GitHub Actions CI (`build.yml` builds the dacpac; `deploy-migrations.yml` parses, compiles, then applies)
 
 ---
 
@@ -55,7 +56,9 @@ MyCustomerDb/
 ├── MyCustomerDb.sqlproj
 ├── Deployments/Migrations/1.0.0/01_dbo.Sample.sql
 ├── SchemaModel/          (populated on first build)
-└── .github/workflows/build.yml
+└── .github/workflows/
+    ├── build.yml
+    └── deploy-migrations.yml   # parse and compile, then apply
 ```
 
 ### Visual Studio 2022 and Visual Studio 2026

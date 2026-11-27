@@ -5,7 +5,7 @@
   "identity": "Databasecode.SqlMigrationDatabase",
   "name": "SQL Server Database (Migration-Driven)",
   "shortName": "sql-migration-db",
-  "description": "SQL Server dacpac project with semver migrations, auto SchemaModel sync, baseline bootstrap, Migration-Id headers, rollback folders, and GitHub Actions CI.",
+  "description": "SQL Server dacpac project with semver migrations, auto SchemaModel sync, migration parse and compile, baseline bootstrap, Migration-Id headers, rollback folders, and GitHub Actions CI.",
   "tags": {
     "language": "SQL",
     "type": "project"
